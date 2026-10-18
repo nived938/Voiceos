@@ -39,7 +39,7 @@ def main():
 
     # 2. AI Provider with Omniroute Failover
     gemini_key = config.get_gemini_api_key()
-    gemini_model = config.get("gemini.model", "gemini-2.5-flash")
+    gemini_model = config.get("gemini.model", "gemini-3.8-flash")
     omniroute = config.get("gemini.omniroute", True)
     ai = GeminiProvider(api_key=gemini_key, model_name=gemini_model, omniroute=omniroute)
 

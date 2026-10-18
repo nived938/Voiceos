@@ -55,16 +55,23 @@ VoiceOS includes four neural voice personas with tailored speech cadence and per
 To ensure 99.99% availability without interrupting the user during rate-limiting or network stalls, VoiceOS implements **Gemini Omniroute**:
 
 ```
-Primary: gemini-2.5-flash
+Primary: gemini-3.8-flash
     │
     ▼ (Rate limit / 404 / 429)
-Fallback 1: gemini-2.5-pro
+Fallback 1: gemini-3.6-flash
     │
-    ▼ (Quota exhaustion)
-Fallback 2: gemini-1.5-flash
+    ▼ (Rate limit / Quota)
+Fallback 2: gemini-3.5-flash-lite
     │
     ▼ (Fallback)
-Fallback 3: gemini-1.5-pro
+Fallback 3: gemini-2.5-flash / gemini-2.5-pro / gemini-1.5-flash
+    │
+    ▼ (Dynamic discovery)
+Dynamically Discovered Compatible Gemini Models
 ```
 
-Omniroute operates silently in the background: errors from candidate models are trapped and retried immediately on the next model without spitting raw stack traces or JSON errors to the user.
+Omniroute operates silently in the background:
+- Errors from candidate models are trapped and retried immediately on the next model without spitting raw stack traces or JSON errors to the user.
+- **Dynamic Model Discovery:** Automatically queries `client.models.list()` via the Gemini SDK and registers active generation models into the candidate pool.
+- **Mid-Stream De-duplication:** If a model fails mid-stream after yielding partial output, Omniroute yields a buffer reset signal so the interface clears partial chunks before streaming from the fallback model, preventing corrupted or concatenated responses.
+- **Single SQLite Transaction:** Each turn is finalized and persisted into SQLite only once per user prompt upon complete generation.

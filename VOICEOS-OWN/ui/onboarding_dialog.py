@@ -188,7 +188,7 @@ class OnboardingDialog(QDialog):
 
         self.test_result_lbl.setText("Testing connection to Google Gemini with Omniroute...")
         self.test_result_lbl.setStyleSheet("color: #aaaaaa;")
-        self.ai.initialize(key, self.config.get("gemini.model", "gemini-2.5-flash"))
+        self.ai.initialize(key, self.config.get("gemini.model", "gemini-3.8-flash"))
         res = self.ai.test_connection()
         if res.get("success"):
             self.test_result_lbl.setText(f"✅ {res.get('message')}")
@@ -217,7 +217,7 @@ class OnboardingDialog(QDialog):
             key = self.key_input.text().strip()
             if key:
                 self.config.set_gemini_api_key(key)
-                self.ai.initialize(key, self.config.get("gemini.model", "gemini-2.5-flash"))
+                self.ai.initialize(key, self.config.get("gemini.model", "gemini-3.8-flash"))
             self.config.set_onboarding_completed(True)
             self.onboarding_finished.emit()
             self.accept()

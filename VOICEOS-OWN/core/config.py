@@ -12,17 +12,19 @@ class ConfigManager:
     """
     DEFAULT_CONFIG = {
         "gemini": {
-            "model": "gemini-2.5-flash",
+            "model": "gemini-3.8-flash",
             "temperature": 0.7,
             "max_output_tokens": 2048,
             "streaming": True,
             "timeout_seconds": 30,
             "omniroute": True,
             "fallback_models": [
+                "gemini-3.8-flash",
+                "gemini-3.6-flash",
+                "gemini-3.5-flash-lite",
                 "gemini-2.5-flash",
                 "gemini-2.5-pro",
-                "gemini-1.5-flash",
-                "gemini-1.5-pro"
+                "gemini-1.5-flash"
             ]
         },
         "audio": {

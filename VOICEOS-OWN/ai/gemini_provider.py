@@ -9,12 +9,15 @@ class GeminiProvider(AIProvider):
     """
     Official Google Gemini API Provider with Omniroute intelligent failover.
     Automatically and silently switches between best available models:
-    gemini-2.5-flash -> gemini-2.5-pro -> gemini-1.5-flash -> gemini-1.5-pro.
+    gemini-3.8-flash -> gemini-3.6-flash -> gemini-3.5-flash-lite -> gemini-2.5-flash -> gemini-2.5-pro -> gemini-1.5-flash.
     
     If a model is unavailable, rate-limited (429), or not responding, it transparently
     routes to the next best model without interrupting or notifying the user.
     """
     AVAILABLE_MODELS = [
+        "gemini-3.8-flash",
+        "gemini-3.6-flash",
+        "gemini-3.5-flash-lite",
         "gemini-2.5-flash",
         "gemini-2.5-pro",
         "gemini-1.5-flash",
@@ -28,7 +31,7 @@ class GeminiProvider(AIProvider):
         "If you use a tool, synthesize the result naturally."
     )
 
-    def __init__(self, api_key: str = "", model_name: str = "gemini-2.5-flash", omniroute: bool = True):
+    def __init__(self, api_key: str = "", model_name: str = "gemini-3.8-flash", omniroute: bool = True):
         self.api_key = api_key
         self.model_name = model_name
         self.omniroute = omniroute
@@ -36,10 +39,11 @@ class GeminiProvider(AIProvider):
         self._cancelled = False
         self._sdk_mode = "genai" # "genai" or "generativeai"
         self._last_successful_model = model_name
+        self._discovered_models: List[str] = []
         if api_key:
             self.initialize(api_key, model_name)
 
-    def initialize(self, api_key: str, model_name: str = "gemini-2.5-flash", **kwargs) -> bool:
+    def initialize(self, api_key: str, model_name: str = "gemini-3.8-flash", **kwargs) -> bool:
         clean_key = api_key.strip()
         if not clean_key:
             logger.warning("Empty Gemini API key provided.")
@@ -69,12 +73,54 @@ class GeminiProvider(AIProvider):
                 logger.error(f"Failed to configure Gemini API: {e}")
                 return False
 
+    def discover_models(self) -> List[str]:
+        """
+        Dynamically discovers active available models from Google Gemini API.
+        Caches discovered models for subsequent candidate queries.
+        """
+        if self._discovered_models:
+            return self._discovered_models
+
+        if not self.api_key:
+            return self.AVAILABLE_MODELS
+
+        discovered = []
+        try:
+            if self._sdk_mode == "genai":
+                from google import genai
+                client = self._client or genai.Client(api_key=self.api_key)
+                pager = client.models.list()
+                for m in pager:
+                    name = getattr(m, "name", "") or ""
+                    clean_name = name.replace("models/", "")
+                    if "gemini" in clean_name.lower():
+                        discovered.append(clean_name)
+            else:
+                import google.generativeai as legacy_genai
+                for m in legacy_genai.list_models():
+                    methods = getattr(m, "supported_generation_methods", []) or []
+                    if "generateContent" in methods:
+                        clean_name = m.name.replace("models/", "")
+                        discovered.append(clean_name)
+        except Exception as e:
+            logger.warning(f"Dynamic model discovery failed: {e}. Falling back to default list.")
+
+        if discovered:
+            self._discovered_models = discovered
+            return discovered
+        return self.AVAILABLE_MODELS
+
     def _get_candidate_models(self) -> List[str]:
         """Returns ordered list of models for omniroute failover starting with primary."""
         candidates = [self.model_name]
         for m in self.AVAILABLE_MODELS:
             if m not in candidates:
                 candidates.append(m)
+
+        for m in self._discovered_models:
+            if m not in candidates:
+                candidates.append(m)
+
         return candidates
 
     def test_connection(self) -> Dict[str, Any]:
@@ -137,7 +183,8 @@ class GeminiProvider(AIProvider):
                           context: Optional[List[Dict[str, str]]] = None,
                           system_instruction: Optional[str] = None,
                           stream: bool = True,
-                          tools: Optional[List[Callable]] = None) -> Generator[Dict[str, Any], None, None]:
+                          tools: Optional[List[Callable]] = None,
+                          status_callback: Optional[Callable[[str], None]] = None) -> Generator[Dict[str, Any], None, None]:
         self._cancelled = False
         if not self.api_key:
             yield {
@@ -267,10 +314,18 @@ class GeminiProvider(AIProvider):
                     yield {"type": "error", "content": "Invalid Gemini API Key. Please update your key in Settings."}
                     return
 
-                # If we already yielded parts of a stream and it aborted mid-stream, don't restart cleanly from next model
+                # If we already yielded parts of a stream and it aborted mid-stream,
+                # yield a reset signal so the consumer clears any partial buffer before fallback stream begins!
                 if yielded_any:
-                    yield {"type": "error", "content": f"Streaming interrupted: {err_str}"}
-                    return
+                    logger.info(f"Omniroute: resetting buffer after mid-stream failure on '{candidate}'")
+                    yield {"type": "reset", "reason": f"Failover from {candidate}"}
+                    yielded_any = False
+
+                if status_callback:
+                    try:
+                        status_callback("Trying fallback model...")
+                    except Exception:
+                        pass
 
                 # Otherwise, continue loop silently to the next model!
                 continue

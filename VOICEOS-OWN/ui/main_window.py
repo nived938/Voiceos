@@ -443,9 +443,25 @@ class MainWindow(QMainWindow):
         model_lbl = QLabel("Primary Model:", sec1)
         model_lbl.setFixedWidth(100)
         self.model_combo = QComboBox(sec1)
-        self.model_combo.addItems(["gemini-2.5-flash", "gemini-2.5-pro", "gemini-1.5-flash", "gemini-1.5-pro"])
-        cur_model = self.config.get("gemini.model", "gemini-2.5-flash")
-        if cur_model in ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-1.5-flash", "gemini-1.5-pro"]:
+        self.model_combo.addItems([
+            "gemini-3.8-flash",
+            "gemini-3.6-flash",
+            "gemini-3.5-flash-lite",
+            "gemini-2.5-flash",
+            "gemini-2.5-pro",
+            "gemini-1.5-flash",
+            "gemini-1.5-pro"
+        ])
+        cur_model = self.config.get("gemini.model", "gemini-3.8-flash")
+        if cur_model in [
+            "gemini-3.8-flash",
+            "gemini-3.6-flash",
+            "gemini-3.5-flash-lite",
+            "gemini-2.5-flash",
+            "gemini-2.5-pro",
+            "gemini-1.5-flash",
+            "gemini-1.5-pro"
+        ]:
             self.model_combo.setCurrentText(cur_model)
         self.model_combo.currentTextChanged.connect(self._on_model_changed)
         model_row.addWidget(model_lbl)
@@ -662,7 +678,7 @@ class MainWindow(QMainWindow):
         key = self.settings_key_input.text().strip()
         if key:
             self.config.set_gemini_api_key(key)
-            self.ai.initialize(key, self.config.get("gemini.model", "gemini-2.5-flash"))
+            self.ai.initialize(key, self.config.get("gemini.model", "gemini-3.8-flash"))
             self.key_status_label.setText(f"Current Status: {self.config.mask_api_key()}")
             QMessageBox.information(self, "Saved", "Gemini API Key saved successfully.")
 
@@ -671,7 +687,7 @@ class MainWindow(QMainWindow):
         if not key:
             QMessageBox.warning(self, "Missing Key", "Please enter an API key to test.")
             return
-        self.ai.initialize(key, self.config.get("gemini.model", "gemini-2.5-flash"))
+        self.ai.initialize(key, self.config.get("gemini.model", "gemini-3.8-flash"))
         res = self.ai.test_connection()
         if res.get("success"):
             QMessageBox.information(self, "Success", f"{res.get('message')}\nSample: \"{res.get('sample', '')}\"")
@@ -777,6 +793,9 @@ class MainWindow(QMainWindow):
                     chunk = event.get("content", "")
                     full_response.append(chunk)
                     self.notch.update_text("".join(full_response))
+                elif etype == "reset":
+                    full_response.clear()
+                    self.notch.update_text("")
                 elif etype == "tool_call":
                     tool_name = event.get("tool_name", "")
                     tool_runs.append({"tool_name": tool_name, "input": event.get("input", {}), "status": "completed"})

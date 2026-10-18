@@ -1,4 +1,5 @@
 import math
+import time
 import winsound
 import win32api
 from pathlib import Path
@@ -18,17 +19,11 @@ from PySide6.QtGui import (
 
 class NotchWidget(QWidget):
     """
-    1:1 Visual Match Floating Top Notch for VoiceOS.
-    Features:
-    - Pure black background (#000000) with signature top inverse flares ('ears')
-      and large rounded lower corners.
-    - Positioned horizontally centered at the very top edge of the primary monitor.
-    - Top-left 18x18px glossy globe icon (toggles floating chat history drawer).
-    - Top-right circular stop button (#1e1e24 circle with white square) in expanded view.
-    - Exact hint row: 'Type or hold [alt] [control] to speak' with dark rounded keycaps.
-    - Seamless transition between Idle/Peeking (82px) and Expanded card view (270px).
-    - Weather card layout (City, 25°C, cloud icon, Overcast, H:32° L:24°) and AI response card.
-    - Push-to-talk, audio wave visualizer, direct typing, and slash commands.
+    1:1 Visual Match Floating Top Notch for VoiceOS with 3-State Architecture.
+    States:
+      - State A (HIDDEN): Dormant 4px hover trigger at screen top center.
+      - State B (PEEKING): Sleek 30px pill peeking down on mouse hover.
+      - State C (EXPANDED): Full 125px voice/typing interface (or 270px card view) on click.
     """
 
     STATE_HIDDEN = 0
@@ -36,16 +31,19 @@ class NotchWidget(QWidget):
     STATE_EXPANDED = 2
 
     # Dimensions
-    IDLE_W = 480
-    IDLE_H = 82
+    HIDDEN_W = 320
+    HIDDEN_H = 4
 
-    EXPANDED_W = 520
-    EXPANDED_H = 270
+    PEEKING_W = 340
+    PEEKING_H = 30
 
-    PEEKING_W = IDLE_W
-    PEEKING_H = IDLE_H
-    HIDDEN_W = IDLE_W
-    HIDDEN_H = IDLE_H
+    EXPANDED_W = 480
+    EXPANDED_IDLE_H = 125
+    EXPANDED_CARD_H = 270
+    EXPANDED_H = 125
+
+    IDLE_W = EXPANDED_W
+    IDLE_H = EXPANDED_IDLE_H
 
     EAR_W = 34
     EAR_H = 24
@@ -96,19 +94,26 @@ class NotchWidget(QWidget):
         self._collapse_timer.setSingleShot(True)
         self._collapse_timer.timeout.connect(self.collapse_to_hidden)
 
+        self._peek_leave_timer = QTimer(self)
+        self._peek_leave_timer.setSingleShot(True)
+        self._peek_leave_timer.timeout.connect(self._on_peek_leave_timeout)
+
         self._outside_monitor_timer = QTimer(self)
-        self._outside_monitor_timer.setInterval(40)
+        self._outside_monitor_timer.setInterval(30)
         self._outside_monitor_timer.timeout.connect(self._check_outside_click)
+
+        self._mouse_was_down = False
+        self._expansion_timestamp = 0.0
 
         self._init_ui()
         self._apply_initial_geometry()
 
     def _init_ui(self):
-        self.setFixedWidth(self.IDLE_W)
-        self.setFixedHeight(self.IDLE_H)
+        self.setFixedWidth(self.HIDDEN_W)
+        self.setFixedHeight(self.HIDDEN_H)
 
         root_layout = QVBoxLayout(self)
-        root_layout.setContentsMargins(self.EAR_W + 12, 12, self.EAR_W + 12, 12)
+        root_layout.setContentsMargins(self.EAR_W + 12, 10, self.EAR_W + 12, 12)
         root_layout.setSpacing(6)
 
         # Top Bar: Globe icon + spacer + Stop Button
@@ -369,6 +374,42 @@ class NotchWidget(QWidget):
 
         w = self.width()
         h = self.height()
+
+        if h <= 6:
+            # State A: Hidden dormant trigger strip
+            painter.drawRect(0, 0, w, h)
+            painter.end()
+            return
+
+        if self._state == self.STATE_PEEKING or h <= 36:
+            # State B: Peeking state with sleek rounded silhouette and subtle peek pill
+            r = min(self.CORNER_R, max(8, h - 4))
+            ear_w = min(self.EAR_W, 18)
+            ear_h = min(self.EAR_H, max(6, h // 2))
+
+            path = QPainterPath()
+            path.moveTo(0, 0)
+            path.cubicTo(QPointF(ear_w * 0.5, 0), QPointF(ear_w, ear_h * 0.4), QPointF(ear_w, ear_h))
+            path.lineTo(ear_w, h - r)
+            path.cubicTo(QPointF(ear_w, h), QPointF(ear_w, h), QPointF(ear_w + r, h))
+            path.lineTo(w - ear_w - r, h)
+            path.cubicTo(QPointF(w - ear_w, h), QPointF(w - ear_w, h), QPointF(w - ear_w, h - r))
+            path.lineTo(w - ear_w, ear_h)
+            path.cubicTo(QPointF(w - ear_w, ear_h * 0.4), QPointF(w - ear_w * 0.5, 0), QPointF(w, 0))
+            path.closeSubpath()
+            painter.drawPath(path)
+
+            # Draw subtle peek indicator bar
+            painter.setBrush(QColor("#2a2a30"))
+            bar_w = 38
+            bar_h = 3
+            bar_x = (w - bar_w) / 2
+            bar_y = (h - bar_h) / 2
+            painter.drawRoundedRect(QRectF(bar_x, bar_y, bar_w, bar_h), 1.5, 1.5)
+            painter.end()
+            return
+
+        # State C: Full expanded inverse ears flares and rounded corners
         ear_w = self.EAR_W
         ear_h = self.EAR_H
         r = self.CORNER_R
@@ -419,6 +460,8 @@ class NotchWidget(QWidget):
         self.type_input.show()
         self.type_input.setFocus()
         self._is_typing = True
+        if self._state != self.STATE_EXPANDED:
+            self.transition_to_expanded(card_view=False)
 
     def stop_typing(self):
         self.type_input.clear()
@@ -428,12 +471,15 @@ class NotchWidget(QWidget):
 
     def _apply_initial_geometry(self):
         screen = QGuiApplication.primaryScreen()
-        self.setFixedWidth(self.IDLE_W)
-        self.setFixedHeight(self.IDLE_H)
+        self.setFixedWidth(self.HIDDEN_W)
+        self.setFixedHeight(self.HIDDEN_H)
         if screen:
             geom = screen.geometry()
-            x = (geom.width() - self.IDLE_W) // 2
+            x = (geom.width() - self.HIDDEN_W) // 2
             self.move(x, 0)
+        self.stack.hide()
+        self.globe_btn.hide()
+        self.stop_btn.hide()
         self.show()
 
     def _animate_to(self, target_w: int, target_h: int, on_finished=None, animated: bool = True):
@@ -477,42 +523,93 @@ class NotchWidget(QWidget):
 
     def transition_to_peeking(self, animated: bool = True):
         self._state = self.STATE_PEEKING
-        self.stop_btn.hide()
-        self.stack.setCurrentWidget(self.idle_widget)
-        self._animate_to(self.IDLE_W, self.IDLE_H, animated=animated)
-        self._outside_monitor_timer.start()
-
-    def transition_to_expanded(self, animated: bool = True):
-        self._state = self.STATE_EXPANDED
+        self._peek_leave_timer.stop()
         self._collapse_timer.stop()
-        self.stop_btn.show()
-        self.stack.setCurrentWidget(self.expanded_widget)
-        self._animate_to(self.EXPANDED_W, self.EXPANDED_H, animated=animated)
+        self.stop_btn.hide()
+        self.stack.hide()
+        self.globe_btn.hide()
+        self._animate_to(self.PEEKING_W, self.PEEKING_H, animated=animated)
+
+    def transition_to_expanded(self, animated: bool = True, card_view: bool = False):
+        self._state = self.STATE_EXPANDED
+        self._peek_leave_timer.stop()
+        self._collapse_timer.stop()
+        self._expansion_timestamp = time.time()
+        self._mouse_was_down = True
+
+        self.globe_btn.show()
+        self.stack.show()
+
+        if card_view or self.stack.currentWidget() == self.expanded_widget:
+            self.stop_btn.show()
+            target_w = self.EXPANDED_W
+            target_h = self.EXPANDED_CARD_H
+        else:
+            self.stop_btn.hide()
+            target_w = self.EXPANDED_W
+            target_h = self.EXPANDED_IDLE_H
+
+        self._animate_to(target_w, target_h, animated=animated)
         self._outside_monitor_timer.start()
 
     def collapse_to_hidden(self, animated: bool = True):
         self._state = self.STATE_HIDDEN
+        self._peek_leave_timer.stop()
         self._collapse_timer.stop()
         self._outside_monitor_timer.stop()
         self.stop_typing()
         self.stop_btn.hide()
+        self.stack.hide()
+        self.globe_btn.hide()
         self.stack.setCurrentWidget(self.idle_widget)
-        self._animate_to(self.IDLE_W, self.IDLE_H, animated=animated)
+        self._animate_to(self.HIDDEN_W, self.HIDDEN_H, animated=animated)
 
     def auto_collapse_after(self, ms: int = 5000):
         self._collapse_timer.start(ms)
 
-    def _check_outside_click(self):
-        if self._state == self.STATE_HIDDEN and not self._is_typing:
+    def _check_outside_click(self, animated: bool = True):
+        if self._state != self.STATE_EXPANDED:
+            return
+
+        # 250ms ignore period immediately following expansion
+        if time.time() - self._expansion_timestamp < 0.25:
             return
 
         l_down = bool(win32api.GetAsyncKeyState(0x01) & 0x8000)
         r_down = bool(win32api.GetAsyncKeyState(0x02) & 0x8000)
+        is_down = l_down or r_down
 
-        if l_down or r_down:
+        # Leading edge trigger: mouse button newly pressed down
+        if is_down and not self._mouse_was_down:
             cursor_pos = QCursor.pos()
-            if not self.geometry().contains(cursor_pos):
-                self.collapse_to_hidden()
+            if not self.frameGeometry().contains(cursor_pos):
+                self.collapse_to_hidden(animated=animated)
+
+        self._mouse_was_down = is_down
+
+    def enterEvent(self, event):
+        super().enterEvent(event)
+        if self._state == self.STATE_HIDDEN:
+            self._peek_leave_timer.stop()
+            self.transition_to_peeking()
+        elif self._state == self.STATE_PEEKING:
+            self._peek_leave_timer.stop()
+
+    def leaveEvent(self, event):
+        super().leaveEvent(event)
+        if self._state == self.STATE_PEEKING:
+            self._peek_leave_timer.start(600)
+
+    def _on_peek_leave_timeout(self, animated: bool = True):
+        if self._state == self.STATE_PEEKING:
+            self.collapse_to_hidden(animated=animated)
+
+    def mousePressEvent(self, event):
+        if self._state == self.STATE_PEEKING:
+            self.transition_to_expanded()
+            event.accept()
+            return
+        super().mousePressEvent(event)
 
     # --- Mode & Persona ---
     def set_mode(self, mode: int):
@@ -542,7 +639,7 @@ class NotchWidget(QWidget):
         self.weather_widget.hide()
         self.content_label.show()
 
-    def expand(self, text: str = "", tool: str = "", status: str = "Active"):
+    def expand(self, text: str = "", tool: str = "", status: str = "Active", animated: bool = True):
         self.set_status(status, tool)
 
         # Detect weather query or result
@@ -553,7 +650,8 @@ class NotchWidget(QWidget):
             self.content_label.show()
             self.content_label.setText(text)
 
-        self.transition_to_expanded()
+        self.stack.setCurrentWidget(self.expanded_widget)
+        self.transition_to_expanded(card_view=True, animated=animated)
 
     def _render_weather_card(self, text: str):
         """Renders 1:1 matching weather card from Screenshot 182513."""
@@ -582,7 +680,8 @@ class NotchWidget(QWidget):
         else:
             self.weather_widget.hide()
             self.content_label.show()
-        self.transition_to_expanded()
+        self.stack.setCurrentWidget(self.expanded_widget)
+        self.transition_to_expanded(card_view=True)
         self.auto_collapse_after(8000)
 
     # --- Typing & Commands ---

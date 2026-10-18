@@ -19,40 +19,36 @@ The notch is rendered on a frameless, transparent canvas using a custom `QPainte
 (ear_w + r, h) ────── bottom_edge ────── (w - ear_w - r, h)
 ```
 
-- **Width:** 480px (Idle) / 520px (Expanded).
-- **Height:** 82px (Idle) / 270px (Expanded).
+- **Width:** 320px (Hidden) / 340px (Peek) / 480px (Expanded).
+- **Height:** 4px (Hidden trigger) / 30px (Peek) / 125px (Expanded Idle) / 270px (Expanded Card).
 - **Top Inverse Curves:** 34px wide $\times$ 24px high cubic bezier curves blending into $y = 0$.
 - **Bottom Corners:** 30px radius.
 - **Color:** Solid pure black `#000000`.
 
 ---
 
-## 3. Interaction States & Transitions
+## 3. Three-State Interaction Lifecycle & Outside-Click Handling
 
-### State 0: Idle / Peeking View
-- Displayed when the assistant is dormant or waiting for input.
-- Displays the top-left globe icon and the keyboard shortcut hint:
-  `Type or hold [alt] [control] to speak`
-- Keycaps `alt` and `control` are styled as dark rounded keys (`#222226` background, `#d1d1d6` bold text, 5px radius).
+### State A: Hidden (`STATE_HIDDEN` = 0)
+- Dormant 320px $\times$ 4px hover-sensitive trigger bar docked at the primary monitor's top-center edge ($y = 0$).
+- Child inputs and labels are hidden.
+- Moving the cursor across the top center triggers an immediate, smooth transition to State B.
 
-### State 1: Active Typing View
-- Triggered by clicking the hint row or pressing `Enter`.
-- Seamlessly reveals a full-width input pill (`#16161c`, 34px height) with placeholder text.
-- Supports slash commands (`/weather`, `/calc`, `/time`, `/sys`, `/persona`, `/mode`).
-- `Tab` toggles between `[DICTATE]` and `[AGENT]` modes.
-- `Esc` dismisses the typing view.
+### State B: Peek (`STATE_PEEKING` = 1)
+- Sleek 340px $\times$ 30px rounded notch silhouette with a subtle centered peek indicator.
+- Allows hovering without revealing the full input interface.
+- Includes a 600ms grace period on mouse leave before smoothly collapsing back to Hidden.
+- Clicking anywhere on the peeked notch smoothly expands it into State C.
 
-### State 2: Active Listening View
-- Triggered by pressing `Ctrl + Shift + D` / `Ctrl + Alt + A` or holding `Alt + Ctrl`.
-- Emits soft audio cue (900 Hz tone) and activates audio ducking.
-- Animates real-time soundwave volume bars responsive to microphone RMS energy.
-
-### State 3: Expanded Card View (AI Output & Weather)
-- Features a top bar with the globe icon (left) and circular stop button (right).
-- Displays the user query pill (`#16161c`) and a slate result card (`#252830`):
-  - **Weather Card:** City name (bold 14px), large temperature (`25°C`), cloud icon, condition (`Overcast`), high/low range (`H:32° L:24°`).
-  - **AI Card:** Streaming response text with neural speech playback.
-- Automatically dismisses after 7–8 seconds or when clicking outside.
+### State C: Expanded (`STATE_EXPANDED` = 2)
+- Fully interactive Dynamic Island:
+  - **Idle / Typing View (125px):** Features the glossy globe icon, hint row with dark keycaps `[alt]` and `[control]`, and full-height text input pill with zero vertical clipping.
+  - **Expanded Card View (270px):** Features user query pill, slate result card (`#252830`), weather details or live streaming response chunks, and circular stop button.
+- **Reliable Outside-Click Dismissal:**
+  - Active in Expanded state with a 250ms expansion grace period.
+  - Monitors global screen cursor position across multi-monitor setups.
+  - Edge-triggered: clicking desktop, File Explorer, VS Code, browsers, or other applications collapses the notch back to Hidden.
+  - Clicking inside the notch or typing inside the input field never triggers dismissal.
 
 ---
 

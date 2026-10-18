@@ -65,9 +65,9 @@ def test_gemini_omniroute_silent_fallback(mock_client_cls):
     mock_client = MagicMock()
 
     def mock_stream(model, contents, config):
-        if model == "gemini-2.5-flash":
+        if model == "gemini-3.8-flash":
             raise Exception("404 Model Not Found or Quota Hit")
-        elif model == "gemini-2.5-pro":
+        elif model == "gemini-3.6-flash":
             c = MagicMock(text="Omniroute answered!", function_calls=None)
             return [c]
         raise Exception("Unknown model")
@@ -75,7 +75,7 @@ def test_gemini_omniroute_silent_fallback(mock_client_cls):
     mock_client.models.generate_content_stream.side_effect = mock_stream
     mock_client_cls.return_value = mock_client
 
-    provider = GeminiProvider(api_key="AIzaSyDummyKey", model_name="gemini-2.5-flash", omniroute=True)
+    provider = GeminiProvider(api_key="AIzaSyDummyKey", model_name="gemini-3.8-flash", omniroute=True)
     events = list(provider.generate_response("Test prompt", stream=True))
 
     # Verify no error events were produced during the failover
@@ -85,4 +85,59 @@ def test_gemini_omniroute_silent_fallback(mock_client_cls):
     # Verify content chunk and complete event were yielded from fallback model
     chunks = [e["content"] for e in events if e["type"] == "chunk"]
     assert chunks == ["Omniroute answered!"]
-    assert provider.active_model == "gemini-2.5-pro"
+    assert provider.active_model == "gemini-3.6-flash"
+
+
+@patch("google.genai.Client")
+def test_gemini_dynamic_model_discovery(mock_client_cls):
+    """
+    Tests dynamic model discovery via client.models.list()
+    """
+    mock_client = MagicMock()
+    m1 = MagicMock(name="models/gemini-3.8-flash")
+    m1.name = "models/gemini-3.8-flash"
+    m2 = MagicMock(name="models/gemini-custom-flash")
+    m2.name = "models/gemini-custom-flash"
+    mock_client.models.list.return_value = [m1, m2]
+    mock_client_cls.return_value = mock_client
+
+    provider = GeminiProvider(api_key="AIzaSyDummyKey", model_name="gemini-3.8-flash")
+    discovered = provider.discover_models()
+    assert "gemini-3.8-flash" in discovered
+    assert "gemini-custom-flash" in discovered
+    candidates = provider._get_candidate_models()
+    assert "gemini-custom-flash" in candidates
+
+
+@patch("google.genai.Client")
+def test_gemini_failover_mid_stream_reset(mock_client_cls):
+    """
+    Tests that mid-stream interruption triggers a clean reset event to prevent
+    duplicate or garbled response concatenation.
+    """
+    mock_client = MagicMock()
+
+    class FailingStream:
+        def __iter__(self):
+            chunk1 = MagicMock(text="Partial text that broke...", function_calls=None)
+            yield chunk1
+            raise Exception("503 Service Unavailable / Stream dropped")
+
+    def mock_stream(model, contents, config):
+        if model == "gemini-3.8-flash":
+            return FailingStream()
+        elif model == "gemini-3.6-flash":
+            return [MagicMock(text="Clean full response from fallback", function_calls=None)]
+        raise Exception("Unknown model")
+
+    mock_client.models.generate_content_stream.side_effect = mock_stream
+    mock_client_cls.return_value = mock_client
+
+    provider = GeminiProvider(api_key="AIzaSyDummyKey", model_name="gemini-3.8-flash", omniroute=True)
+    events = list(provider.generate_response("Test prompt", stream=True))
+
+    types = [e["type"] for e in events]
+    assert "reset" in types
+    chunks = [e["content"] for e in events if e["type"] == "chunk"]
+    assert "Clean full response from fallback" in chunks
+

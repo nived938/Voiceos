@@ -13,7 +13,7 @@ def temp_config_dir():
 
 def test_config_defaults(temp_config_dir):
     cfg = ConfigManager(config_dir=temp_config_dir)
-    assert cfg.get("gemini.model") == "gemini-2.5-flash"
+    assert cfg.get("gemini.model") == "gemini-3.8-flash"
     assert cfg.get("gemini.omniroute") is True
     assert cfg.get("audio.sample_rate") == 48000
     assert cfg.get("audio.voice_persona") == "Jarvis"
