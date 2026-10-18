@@ -3,13 +3,13 @@
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 [![PySide6 / Qt 6](https://img.shields.io/badge/GUI-PySide6%20%2F%20Qt%206-green.svg)](https://wiki.qt.io/Qt_for_Python)
 [![Gemini API](https://img.shields.io/badge/AI-Google%20Gemini%20API-orange.svg)](https://ai.google.dev/)
-[![Tests](https://img.shields.io/badge/Tests-24%20Passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-30%20Passing-brightgreen.svg)]()
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011%2064--bit-lightgrey.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-lightgrey.svg)]()
 
 This repository contains the complete forensic reverse-engineering investigation of the commercial **VoiceOS** desktop application, accompanied by an original, production-ready clean-room implementation: **VOICEOS-OWN**.
 
-Built with **Python**, **PySide6 (Qt 6)**, and powered by **Google Gemini API**, VOICEOS-OWN reproduces and enhances the core capabilities of VoiceOS into a luxury, high-contrast **Black and White** interface featuring a **1:1 button-free Top Notch Dynamic Island**, **Gemini Omniroute auto-failover**, **selectable AI voice personas** (Jarvis, Friday, Edith, Ultron), and **direct keyboard input**.
+Built with **Python**, **PySide6 (Qt 6)**, and powered by **Google Gemini API**, VOICEOS-OWN reproduces the visual aesthetic and capabilities of VoiceOS into a luxury, high-contrast **Black and White** interface featuring a **1:1 Floating Top Notch Dynamic Island** (pure `#000000`, rounded ears, dark `[alt]` and `[control]` keycaps), a **1:1 Floating Left-Side Chat History Panel** (real search filter, timestamp grouping, pin/lock control), **Gemini Omniroute auto-failover**, **selectable AI voice personas** (Jarvis, Friday, Edith, Ultron), and **direct keyboard input**.
 
 ---
 
@@ -17,15 +17,31 @@ Built with **Python**, **PySide6 (Qt 6)**, and powered by **Google Gemini API**,
 
 ```
 VOICE-OS/
+├── AGY.md                          # Antigravity architectural guidelines
+├── AGENTS.md                       # Persona definitions & operational modes
+├── CLAUDE.md                       # Claude Code developer & CLI reference
+├── UI_SPECIFICATION.md             # 1:1 pixel fidelity & geometry rules
+├── CHAT_HISTORY.md                 # Floating chat history panel architecture
+├── TOP_NOTCH.md                    # Dynamic Island top notch specification
+├── VOICE_PIPELINE.md               # Audio capture, STT, TTS, ducking
+├── DATABASE_SCHEMA.md              # SQLite persistence documentation
+├── HOTKEYS_AND_INPUT.md            # Windows global hotkeys & injection
+├── INTEGRATIONS.md                 # Gemini API & tool ecosystem
+├── DEVELOPER_GUIDE.md              # Setup, troubleshooting & contributing
 ├── research/
 │   └── VOICEOS_INVESTIGATION.md    # Complete 16KB forensic reverse-engineering report
 ├── VOICEOS-OWN/                    # Independent clean-room Windows desktop assistant
 │   ├── ai/                         # Google Gemini provider with Omniroute failover & tools
 │   ├── audio/                      # Audio capture, STT, TTS personas & system ducking
 │   ├── core/                       # Hotkeys, SQLite, window watcher & text injector
-│   ├── ui/                         # Monochromatic Qt6 UI, button-free Top Notch & drawer
-│   ├── tests/                      # 24 automated unit tests
-│   ├── docs/                       # Specifications (Architecture, Security, Licensing)
+│   ├── ui/                         # Monochromatic Qt6 UI, 1:1 Top Notch & History Drawer
+│   │   ├── assets/                 # High-resolution assets (globe.png)
+│   │   ├── notch_widget.py         # 1:1 Top Notch dynamic island
+│   │   ├── history_drawer.py       # 1:1 Floating Chat History panel
+│   │   ├── main_window.py          # Dashboard & pipeline coordinator
+│   │   └── styles.py               # Monochromatic dark stylesheets
+│   ├── tests/                      # 30 automated unit tests (100% passing)
+│   ├── docs/                       # Component specifications
 │   ├── run.ps1                     # PowerShell one-click launcher
 │   ├── run.bat                     # Windows batch launcher
 │   └── main.py                     # Desktop application entry point
@@ -48,15 +64,27 @@ The full evidence-based report is available in [`research/VOICEOS_INVESTIGATION.
 
 ## ✨ Features of VOICEOS-OWN
 
-### 1. 1:1 Button-Free Top Notch Dynamic Island
-- **Clean Aesthetic:** Designed with a pure OLED black (`#000000`) and white (`#ffffff`) palette, free from distracting buttons.
-- **State Transitions:**
-  - *Hidden by default:* Discreet 4px trigger at the top-center edge of the screen.
-  - *Hover to peek:* Slides down smoothly into a 28px rounded pill when hovering at the top of the monitor.
-  - *Click to expand:* Expands into a 150px dynamic island featuring live visualizer bars, active voice persona, mode indicator, and typing bar.
-- **Click-Outside Auto-Dismissal:** Global 35ms cursor monitoring auto-collapses the notch smoothly whenever the user clicks anywhere outside the island, switches applications, or presses `Esc`.
+### 1. 1:1 Floating Top Notch Dynamic Island
+- **Exact Visual Match:** Pure `#000000` background with smooth inverse flares ("ears") flaring flush into screen top ($y = 0$) and 30px rounded lower corners.
+- **Icon & Keycaps:**
+  - Top-left 18x18px glossy globe icon (toggles floating history drawer).
+  - Second row hint: `Type or hold [alt] [control] to speak` rendered with dark rounded keycaps (`#222226` background, `#d1d1d6` bold text).
+- **Expanded Card View:**
+  - Query pill (`#16161c`) with prompt text.
+  - Slate Result Card (`#252830`) displaying meteorological weather metrics (`Kāsaragod`, `25°C`, `Overcast`, `H:32° L:24°`) or streaming AI text.
+  - Circular Stop Button (`#1e1e24` circle with white square `■`).
+- **Outside Click Auto-Dismissal:** Smoothly collapses on outside click, window switch, or `Esc`.
 
-### 2. Direct Typing Interface ("Typre Thing") & Built-in Slash Commands
+### 2. 1:1 Floating Left-Side Chat History Panel
+- **Dimensions & Placement:** 232px wide $\times$ 516px tall, starting 58px below screen top at $x = 0$ with 26px rounded corners.
+- **Search Pill & Lock:**
+  - Embedded magnifying glass icon with real-time substring filtering across titles and transcripts.
+  - Circular lock control toggles between unpinned (auto-dismiss) and pinned (persistent) mode.
+- **Chronological Groupings:** Automatically formats timestamps into buckets (`Today, 6:05 PM`, `Today, 2:56 PM`, `Yesterday, 4:10 PM`).
+- **Conversation Items:** Single-line white titles with ellipsis truncation, globe icons, and `#1a1a24` selection highlighting.
+- **Conversation Restoration:** Single-click restores past conversation content directly into the Top Notch and copies to clipboard.
+
+### 3. Direct Typing Interface & Built-in Slash Commands
 Type queries directly into the Top Notch or Home Dashboard without speaking:
 - `Enter` ↵ to submit
 - `Tab` ⇆ to toggle between **[DICTATE]** and **[AGENT]** modes

@@ -149,6 +149,7 @@ class MainWindow(QMainWindow):
         # Top Notch interactions
         self.notch.toggle_dictation_requested.connect(self.toggle_dictation)
         self.notch.toggle_agent_requested.connect(self.toggle_agent)
+        self.notch.toggle_history_requested.connect(self.toggle_history)
         self.notch.text_submitted.connect(self.handle_text_query)
         self.notch.paste_requested.connect(self.paste_last_output)
         self.notch.mode_changed.connect(self._on_notch_mode_changed)
@@ -691,11 +692,17 @@ class MainWindow(QMainWindow):
         self.notch.setVisible(enabled)
 
     def _on_drawer_session_selected(self, session_data: dict):
-        text = session_data.get("generated_text") or session_data.get("transcript") or ""
+        transcript = session_data.get("transcript") or ""
+        generated = session_data.get("generated_text") or ""
+        text = generated or transcript
         if text:
             pyperclip.copy(text)
-            self.notch.expand(f"Copied to clipboard: {text[:60]}...", status="Clipboard")
-            self.notch.auto_collapse_after(3000)
+
+        # Restore into Notch display
+        self.notch.show_restored_conversation(transcript, generated)
+
+    def toggle_history(self):
+        self.history_drawer.toggle()
 
     # --- Core Voice & Interaction Pipeline ---
     def toggle_dictation(self):
@@ -822,6 +829,7 @@ class MainWindow(QMainWindow):
             self.ducker.unduck()
         self.notch.set_listening(False)
         self._reload_home()
+        self.history_drawer.reload()
         self.notch.auto_collapse_after(7000)
 
     # --- Window Controls ---
