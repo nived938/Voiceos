@@ -476,3 +476,8 @@ class HistoryDrawer(QWidget):
         self._selected_session_id = session.get("id")
         self.session_selected.emit(session)
         self._filter_and_render()
+
+    def closeEvent(self, event):
+        self._anim.stop()
+        self._outside_timer.stop()
+        super().closeEvent(event)

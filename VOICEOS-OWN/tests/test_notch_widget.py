@@ -83,15 +83,16 @@ def test_notch_dimensions_and_no_clipping(qapp_session):
     """
     notch = NotchWidget()
     notch.transition_to_expanded(animated=False)
-    assert notch.height() >= 125
-    assert notch.width() >= 480
+    assert notch.height() == NotchWidget.EXPANDED_IDLE_H
+    assert notch.height() == 84
+    assert notch.width() == 490
 
     notch.start_typing()
     assert notch._is_typing is True
     assert notch.type_input.isVisible() is True
-    assert notch.type_input.height() >= 34
+    assert notch.type_input.height() == 26
     # Layout clearance: notch height must leave generous padding below input box
-    assert notch.height() >= notch.type_input.height() + 50
+    assert notch.height() >= notch.type_input.height() + 40
     notch.close()
 
 
@@ -197,7 +198,7 @@ def test_notch_typing_lockout_and_stability(qapp_session):
 
 def test_notch_keycap_and_input_dimensions(qapp_session):
     """
-    Verifies keycap sizing (16px height) and input stability (34px height)
+    Verifies keycap sizing (18px height) and input stability (26px height)
     with zero geometry shift when focused.
     """
     from PySide6.QtWidgets import QLabel
@@ -211,17 +212,48 @@ def test_notch_keycap_and_input_dimensions(qapp_session):
     ]
     assert len(keycaps) == 2
     for kc in keycaps:
-        assert kc.height() == 16
+        assert kc.height() == 18
         assert "9px" in kc.styleSheet()
 
     # Check input box height
-    assert notch.type_input.height() == 34
-    initial_geom = notch.type_input.geometry()
+    assert notch.type_input.height() == 26
 
     # Simulate focus
     notch.start_typing()
     notch.type_input.setFocus()
-    assert notch.type_input.height() == 34
+    assert notch.type_input.height() == 26
+    assert notch.height() == 84
+    notch.close()
+
+
+def test_notch_box_does_not_change_when_text_box_clicked(qapp_session):
+    """
+    Verifies that clicking the text box or notch does not change the notch box
+    size, shape, or position, and the input stays borderless and transparent.
+    """
+    notch = NotchWidget()
+    notch.transition_to_expanded(animated=False)
+
+    geom_before = notch.geometry()
+    width_before = notch.width()
+    height_before = notch.height()
+
+    # Click on the hint row / text box
+    notch.start_typing()
+
+    geom_after = notch.geometry()
+    width_after = notch.width()
+    height_after = notch.height()
+
+    # Geometry of the notch box must not change
+    assert geom_after == geom_before
+    assert width_after == width_before == 490
+    assert height_after == height_before == 84
+
+    # The input must have transparent background and no borders (no box appears)
+    assert "transparent" in notch.type_input.styleSheet()
+    assert "border: none" in notch.type_input.styleSheet()
+
     notch.close()
 
 

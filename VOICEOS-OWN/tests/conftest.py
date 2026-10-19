@@ -8,7 +8,8 @@ def qapp_session():
         app = QApplication([])
     yield app
     try:
+        app.closeAllWindows()
+        app.sendPostedEvents()
         app.processEvents()
-        app.quit()
     except Exception:
         pass

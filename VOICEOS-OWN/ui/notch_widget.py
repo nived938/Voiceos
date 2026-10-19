@@ -5,7 +5,7 @@ import win32api
 from pathlib import Path
 from PySide6.QtCore import (
     Qt, QPropertyAnimation, QRect, QRectF, QPointF, QTimer, Signal, Slot,
-    QEasingCurve, QEvent
+    QEasingCurve, QEvent, QSize
 )
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QLabel, QFrame,
@@ -22,32 +22,32 @@ class NotchWidget(QWidget):
     1:1 Visual Match Floating Top Notch for VoiceOS with 3-State Architecture.
     States:
       - State A (HIDDEN): Dormant 4px hover trigger at screen top center.
-      - State B (PEEKING): Sleek 30px pill peeking down on mouse hover.
-      - State C (EXPANDED): Full 125px voice/typing interface (or 270px card view) on click.
+      - State B (PEEKING): Sleek 28px pill peeking down on mouse hover.
+      - State C (EXPANDED): Full 84px voice/typing interface (or 270px card view) on click.
     """
 
     STATE_HIDDEN = 0
     STATE_PEEKING = 1
     STATE_EXPANDED = 2
 
-    # Dimensions
+    # Dimensions matching original VoiceOS 1:1 reference screenshot
     HIDDEN_W = 320
     HIDDEN_H = 4
 
     PEEKING_W = 340
-    PEEKING_H = 30
+    PEEKING_H = 28
 
-    EXPANDED_W = 480
-    EXPANDED_IDLE_H = 125
+    EXPANDED_W = 490
+    EXPANDED_IDLE_H = 84
     EXPANDED_CARD_H = 270
-    EXPANDED_H = 125
+    EXPANDED_H = 84
 
     IDLE_W = EXPANDED_W
     IDLE_H = EXPANDED_IDLE_H
 
-    EAR_W = 34
+    EAR_W = 25
     EAR_H = 24
-    CORNER_R = 30
+    CORNER_R = 26
 
     KEYCAP_STYLE = """
         QLabel {
@@ -56,7 +56,7 @@ class NotchWidget(QWidget):
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             font-size: 9px;
             font-weight: 700;
-            border-radius: 4px;
+            border-radius: 5px;
             padding: 0px 6px;
             border: none;
         }
@@ -65,30 +65,22 @@ class NotchWidget(QWidget):
     TYPE_INPUT_STYLE = """
         QLineEdit#typeInput,
         QLineEdit#typeInput:hover,
+        QLineEdit#typeInput:focus,
         QLineEdit#typeInput:disabled {
-            background-color: #16161c;
-            border: 1px solid #16161c;
-            border-radius: 17px;
-            padding: 0 14px;
+            background-color: transparent;
+            border: none;
+            outline: none;
+            padding: 0px;
+            margin: 0px;
             color: #ffffff;
-            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             font-size: 13px;
-            selection-background-color: #33333e;
-            selection-color: #ffffff;
-        }
-        QLineEdit#typeInput:focus {
-            background-color: #16161c;
-            border: 1px solid #2a2a34;
-            border-radius: 17px;
-            padding: 0 14px;
-            color: #ffffff;
-            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
-            font-size: 13px;
+            font-weight: 400;
             selection-background-color: #33333e;
             selection-color: #ffffff;
         }
         QLineEdit#typeInput::placeholder {
-            color: #777782;
+            color: #7a7c80;
         }
     """
 
@@ -158,7 +150,7 @@ class NotchWidget(QWidget):
         self.setFixedHeight(self.HIDDEN_H)
 
         root_layout = QVBoxLayout(self)
-        root_layout.setContentsMargins(self.EAR_W + 12, 10, self.EAR_W + 12, 12)
+        root_layout.setContentsMargins(self.EAR_W + 11, 12, self.EAR_W + 11, 10)
         root_layout.setSpacing(6)
 
         # Top Bar: Globe icon + spacer + Stop Button
@@ -168,13 +160,13 @@ class NotchWidget(QWidget):
 
         # Globe Icon Button (toggles History drawer)
         self.globe_btn = QPushButton(self)
-        self.globe_btn.setFixedSize(22, 22)
+        self.globe_btn.setFixedSize(18, 18)
         self.globe_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.globe_btn.setToolTip("Open Chat History")
-        self.globe_btn.setStyleSheet("background: transparent; border: none;")
+        self.globe_btn.setStyleSheet("background: transparent; border: none; padding: 0;")
         if not self._globe_pixmap.isNull():
             self.globe_btn.setIcon(self._globe_pixmap)
-            self.globe_btn.setIconSize(self._globe_pixmap.size())
+            self.globe_btn.setIconSize(QSize(18, 18))
         else:
             self.globe_btn.setText("🌐")
         self.globe_btn.clicked.connect(self._on_globe_clicked)
@@ -197,14 +189,14 @@ class NotchWidget(QWidget):
 
         # Stop Button (visible in expanded mode)
         self.stop_btn = QPushButton(self)
-        self.stop_btn.setFixedSize(24, 24)
+        self.stop_btn.setFixedSize(20, 20)
         self.stop_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.stop_btn.setToolTip("Close / Stop")
         self.stop_btn.setStyleSheet("""
             QPushButton {
                 background-color: #1e1e24;
                 border: none;
-                border-radius: 12px;
+                border-radius: 10px;
             }
             QPushButton:hover {
                 background-color: #2c2c34;
@@ -226,9 +218,9 @@ class NotchWidget(QWidget):
         idle_layout.setContentsMargins(0, 4, 0, 0)
         idle_layout.setSpacing(0)
 
-        # Dedicated Input Container: always fixed 36px height to eliminate jumping
+        # Dedicated Input Container: fixed 26px height, seamless transparent surface
         self.input_container = QWidget(self.idle_widget)
-        self.input_container.setFixedHeight(36)
+        self.input_container.setFixedHeight(26)
         container_layout = QVBoxLayout(self.input_container)
         container_layout.setContentsMargins(0, 0, 0, 0)
         container_layout.setSpacing(0)
@@ -238,7 +230,7 @@ class NotchWidget(QWidget):
 
         # Page 0: Keycap Hint Row: 'Type or hold [alt] [control] to speak'
         self.hint_row = QWidget(self.input_stack)
-        self.hint_row.setFixedHeight(36)
+        self.hint_row.setFixedHeight(26)
         self.hint_row.setCursor(Qt.CursorShape.PointingHandCursor)
         self.hint_row.mousePressEvent = lambda e: self.start_typing()
         hint_layout = QHBoxLayout(self.hint_row)
@@ -247,20 +239,20 @@ class NotchWidget(QWidget):
         hint_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
         prefix_lbl = QLabel("Type or hold", self.hint_row)
-        prefix_lbl.setStyleSheet("color: #8a8a8e; font-size: 12px; font-weight: 400;")
+        prefix_lbl.setStyleSheet("color: #7a7c80; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; font-weight: 400;")
 
         alt_key = QLabel("alt", self.hint_row)
         alt_key.setStyleSheet(self.KEYCAP_STYLE)
-        alt_key.setFixedHeight(16)
+        alt_key.setFixedHeight(18)
         alt_key.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         ctrl_key = QLabel("control", self.hint_row)
         ctrl_key.setStyleSheet(self.KEYCAP_STYLE)
-        ctrl_key.setFixedHeight(16)
+        ctrl_key.setFixedHeight(18)
         ctrl_key.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         suffix_lbl = QLabel("to speak", self.hint_row)
-        suffix_lbl.setStyleSheet("color: #8a8a8e; font-size: 12px; font-weight: 400;")
+        suffix_lbl.setStyleSheet("color: #7a7c80; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; font-weight: 400;")
 
         hint_layout.addWidget(prefix_lbl)
         hint_layout.addWidget(alt_key)
@@ -270,10 +262,10 @@ class NotchWidget(QWidget):
 
         self.input_stack.addWidget(self.hint_row)
 
-        # Page 1: Typing Input Pill (Seamlessly appears when clicked or typing)
+        # Page 1: Typing Input (Transparent, borderless, seamless in-place typing)
         self.type_input = QLineEdit(self.input_stack)
         self.type_input.setObjectName("typeInput")
-        self.type_input.setFixedHeight(34)
+        self.type_input.setFixedHeight(26)
         self.type_input.setStyleSheet(self.TYPE_INPUT_STYLE)
         self.type_input.setPlaceholderText("Type prompt or text... [Enter ↵ • Tab ⇆ mode]")
         self.type_input.returnPressed.connect(self._on_type_submit)
@@ -500,10 +492,12 @@ class NotchWidget(QWidget):
         self._collapse_timer.stop()
         self._peek_leave_timer.stop()
         self._is_typing = True
+        self.stack.setCurrentWidget(self.idle_widget)
+        self.stop_btn.hide()
         self.input_stack.setCurrentWidget(self.type_input)
         self.type_input.show()
         self.type_input.setFocus()
-        if self._state != self.STATE_EXPANDED:
+        if self._state != self.STATE_EXPANDED or self.height() != self.EXPANDED_IDLE_H:
             self.transition_to_expanded(card_view=False)
 
     def stop_typing(self):
@@ -593,11 +587,13 @@ class NotchWidget(QWidget):
         self.globe_btn.show()
         self.stack.show()
 
-        if card_view or self.stack.currentWidget() == self.expanded_widget:
+        if card_view:
+            self.stack.setCurrentWidget(self.expanded_widget)
             self.stop_btn.show()
             target_w = self.EXPANDED_W
             target_h = self.EXPANDED_CARD_H
         else:
+            self.stack.setCurrentWidget(self.idle_widget)
             self.stop_btn.hide()
             target_w = self.EXPANDED_W
             target_h = self.EXPANDED_IDLE_H
@@ -671,6 +667,11 @@ class NotchWidget(QWidget):
             self.transition_to_expanded()
             event.accept()
             return
+        elif self._state == self.STATE_EXPANDED:
+            if not self._is_typing and self.stack.currentWidget() == self.idle_widget:
+                self.start_typing()
+                event.accept()
+                return
         super().mousePressEvent(event)
 
     # --- Mode & Persona ---
@@ -851,3 +852,10 @@ class NotchWidget(QWidget):
             event.accept()
         else:
             super().keyPressEvent(event)
+
+    def closeEvent(self, event):
+        self._anim.stop()
+        self._collapse_timer.stop()
+        self._peek_leave_timer.stop()
+        self._outside_monitor_timer.stop()
+        super().closeEvent(event)
