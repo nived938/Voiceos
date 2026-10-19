@@ -860,7 +860,7 @@ class MainWindow(QMainWindow):
     def toggle_notch(self):
         if self.notch.isVisible():
             if self.notch._state == NotchWidget.STATE_EXPANDED:
-                self.notch.collapse_to_hidden()
+                self.notch.collapse_to_hidden(force=True)
             else:
                 self.notch.transition_to_expanded()
         else:

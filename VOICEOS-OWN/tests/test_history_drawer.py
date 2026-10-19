@@ -96,9 +96,9 @@ def test_history_drawer_date_grouping(qapp_session, mock_db):
     ]
     groups = drawer._group_sessions(sessions)
     assert len(groups) >= 1
-    # Check that headings start with Today or Oct
+    # Check that headings start with Today, Yesterday, Oct or Recent
     for heading in groups.keys():
-        assert "Today" in heading or "Oct" in heading or "Recent" in heading
+        assert "Today" in heading or "Yesterday" in heading or "Oct" in heading or "Recent" in heading
     drawer.close()
 
 

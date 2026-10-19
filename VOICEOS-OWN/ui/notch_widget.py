@@ -49,6 +49,49 @@ class NotchWidget(QWidget):
     EAR_H = 24
     CORNER_R = 30
 
+    KEYCAP_STYLE = """
+        QLabel {
+            background-color: #222226;
+            color: #d1d1d6;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-size: 9px;
+            font-weight: 700;
+            border-radius: 4px;
+            padding: 0px 6px;
+            border: none;
+        }
+    """
+
+    TYPE_INPUT_STYLE = """
+        QLineEdit#typeInput,
+        QLineEdit#typeInput:hover,
+        QLineEdit#typeInput:disabled {
+            background-color: #16161c;
+            border: 1px solid #16161c;
+            border-radius: 17px;
+            padding: 0 14px;
+            color: #ffffff;
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-size: 13px;
+            selection-background-color: #33333e;
+            selection-color: #ffffff;
+        }
+        QLineEdit#typeInput:focus {
+            background-color: #16161c;
+            border: 1px solid #2a2a34;
+            border-radius: 17px;
+            padding: 0 14px;
+            color: #ffffff;
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-size: 13px;
+            selection-background-color: #33333e;
+            selection-color: #ffffff;
+        }
+        QLineEdit#typeInput::placeholder {
+            color: #777782;
+        }
+    """
+
     # Signals
     text_submitted = Signal(str, int)              # (text, mode: 0=Dictate, 3=Agent)
     toggle_dictation_requested = Signal()
@@ -82,17 +125,18 @@ class NotchWidget(QWidget):
             asset_path = curr_dir / "globe.png"
         self._globe_pixmap = QPixmap(str(asset_path)) if asset_path.exists() else QPixmap()
 
-        # Animation
+        # Animation state and generation counter
         self._anim = QPropertyAnimation(self, b"geometry")
         self._anim.setDuration(220)
         self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
         self._on_finished_callback = None
+        self._anim_generation = 0
         self._anim.finished.connect(self._handle_anim_finished)
 
         # Timers
         self._collapse_timer = QTimer(self)
         self._collapse_timer.setSingleShot(True)
-        self._collapse_timer.timeout.connect(self.collapse_to_hidden)
+        self._collapse_timer.timeout.connect(self._on_collapse_timeout)
 
         self._peek_leave_timer = QTimer(self)
         self._peek_leave_timer.setSingleShot(True)
@@ -104,6 +148,7 @@ class NotchWidget(QWidget):
 
         self._mouse_was_down = False
         self._expansion_timestamp = 0.0
+        self.type_input = None
 
         self._init_ui()
         self._apply_initial_geometry()
@@ -175,66 +220,44 @@ class NotchWidget(QWidget):
         # Content Stack: Idle View vs Expanded Card View
         self.stack = QStackedWidget(self)
 
-        # View 0: Idle View (Keycap Hint + Interactive typing trigger)
+        # View 0: Idle View (Input Container + Interactive typing trigger)
         self.idle_widget = QWidget(self)
         idle_layout = QVBoxLayout(self.idle_widget)
         idle_layout.setContentsMargins(0, 4, 0, 0)
-        idle_layout.setSpacing(6)
+        idle_layout.setSpacing(0)
 
-        # Typing Input Pill (Seamlessly appears when clicked or typing)
-        self.type_input = QLineEdit(self.idle_widget)
-        self.type_input.setObjectName("typeInput")
-        self.type_input.setFixedHeight(34)
-        self.type_input.setStyleSheet("""
-            QLineEdit#typeInput {
-                background-color: #16161c;
-                border: none;
-                border-radius: 17px;
-                padding: 0 14px;
-                color: #ffffff;
-                font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
-                font-size: 13px;
-            }
-            QLineEdit#typeInput::placeholder {
-                color: #777782;
-            }
-        """)
-        self.type_input.setPlaceholderText("Type prompt or text... [Enter ↵ • Tab ⇆ mode]")
-        self.type_input.returnPressed.connect(self._on_type_submit)
-        self.type_input.installEventFilter(self)
-        self.type_input.hide()
-        idle_layout.addWidget(self.type_input)
+        # Dedicated Input Container: always fixed 36px height to eliminate jumping
+        self.input_container = QWidget(self.idle_widget)
+        self.input_container.setFixedHeight(36)
+        container_layout = QVBoxLayout(self.input_container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(0)
 
-        # Keycap Hint Row: 'Type or hold [alt] [control] to speak'
-        self.hint_row = QWidget(self.idle_widget)
+        self.input_stack = QStackedWidget(self.input_container)
+        container_layout.addWidget(self.input_stack)
+
+        # Page 0: Keycap Hint Row: 'Type or hold [alt] [control] to speak'
+        self.hint_row = QWidget(self.input_stack)
+        self.hint_row.setFixedHeight(36)
         self.hint_row.setCursor(Qt.CursorShape.PointingHandCursor)
         self.hint_row.mousePressEvent = lambda e: self.start_typing()
         hint_layout = QHBoxLayout(self.hint_row)
-        hint_layout.setContentsMargins(0, 4, 0, 0)
+        hint_layout.setContentsMargins(0, 0, 0, 0)
         hint_layout.setSpacing(6)
+        hint_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
         prefix_lbl = QLabel("Type or hold", self.hint_row)
         prefix_lbl.setStyleSheet("color: #8a8a8e; font-size: 12px; font-weight: 400;")
 
         alt_key = QLabel("alt", self.hint_row)
-        alt_key.setStyleSheet("""
-            background-color: #222226;
-            color: #d1d1d6;
-            font-size: 10px;
-            font-weight: 700;
-            border-radius: 5px;
-            padding: 2px 7px;
-        """)
+        alt_key.setStyleSheet(self.KEYCAP_STYLE)
+        alt_key.setFixedHeight(16)
+        alt_key.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         ctrl_key = QLabel("control", self.hint_row)
-        ctrl_key.setStyleSheet("""
-            background-color: #222226;
-            color: #d1d1d6;
-            font-size: 10px;
-            font-weight: 700;
-            border-radius: 5px;
-            padding: 2px 7px;
-        """)
+        ctrl_key.setStyleSheet(self.KEYCAP_STYLE)
+        ctrl_key.setFixedHeight(16)
+        ctrl_key.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         suffix_lbl = QLabel("to speak", self.hint_row)
         suffix_lbl.setStyleSheet("color: #8a8a8e; font-size: 12px; font-weight: 400;")
@@ -245,7 +268,21 @@ class NotchWidget(QWidget):
         hint_layout.addWidget(suffix_lbl)
         hint_layout.addStretch()
 
-        idle_layout.addWidget(self.hint_row)
+        self.input_stack.addWidget(self.hint_row)
+
+        # Page 1: Typing Input Pill (Seamlessly appears when clicked or typing)
+        self.type_input = QLineEdit(self.input_stack)
+        self.type_input.setObjectName("typeInput")
+        self.type_input.setFixedHeight(34)
+        self.type_input.setStyleSheet(self.TYPE_INPUT_STYLE)
+        self.type_input.setPlaceholderText("Type prompt or text... [Enter ↵ • Tab ⇆ mode]")
+        self.type_input.returnPressed.connect(self._on_type_submit)
+        self.type_input.installEventFilter(self)
+        self.type_input.hide()
+        self.input_stack.addWidget(self.type_input)
+
+        self.input_stack.setCurrentWidget(self.hint_row)
+        idle_layout.addWidget(self.input_container)
         self.stack.addWidget(self.idle_widget)
 
         # View 1: Expanded Card View (Query Pill + Slate Result Card)
@@ -338,11 +375,15 @@ class NotchWidget(QWidget):
         lbl1 = QLabel("Type or hold", self.expanded_widget)
         lbl1.setStyleSheet("color: #8a8a8e; font-size: 12px;")
         k1 = QLabel("alt", self.expanded_widget)
-        k1.setFixedHeight(18)
-        k1.setStyleSheet("background-color: #222226; color: #d1d1d6; font-size: 10px; font-weight: 700; border-radius: 5px; padding: 2px 7px;")
+        k1.setStyleSheet(self.KEYCAP_STYLE)
+        k1.setFixedHeight(16)
+        k1.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
         k2 = QLabel("control", self.expanded_widget)
-        k2.setFixedHeight(18)
-        k2.setStyleSheet("background-color: #222226; color: #d1d1d6; font-size: 10px; font-weight: 700; border-radius: 5px; padding: 2px 7px;")
+        k2.setStyleSheet(self.KEYCAP_STYLE)
+        k2.setFixedHeight(16)
+        k2.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
         lbl2 = QLabel("to speak", self.expanded_widget)
         lbl2.setStyleSheet("color: #8a8a8e; font-size: 12px;")
 
@@ -453,26 +494,28 @@ class NotchWidget(QWidget):
         self.toggle_history_requested.emit()
 
     def _on_stop_clicked(self):
-        self.collapse_to_hidden()
+        self.collapse_to_hidden(force=True)
 
     def start_typing(self):
-        self.hint_row.hide()
+        self._collapse_timer.stop()
+        self._peek_leave_timer.stop()
+        self._is_typing = True
+        self.input_stack.setCurrentWidget(self.type_input)
         self.type_input.show()
         self.type_input.setFocus()
-        self._is_typing = True
         if self._state != self.STATE_EXPANDED:
             self.transition_to_expanded(card_view=False)
 
     def stop_typing(self):
         self.type_input.clear()
-        self.type_input.hide()
+        self.type_input.clearFocus()
+        self.input_stack.setCurrentWidget(self.hint_row)
         self.hint_row.show()
         self._is_typing = False
 
     def _apply_initial_geometry(self):
         screen = QGuiApplication.primaryScreen()
-        self.setFixedWidth(self.HIDDEN_W)
-        self.setFixedHeight(self.HIDDEN_H)
+        self.setFixedSize(self.HIDDEN_W, self.HIDDEN_H)
         if screen:
             geom = screen.geometry()
             x = (geom.width() - self.HIDDEN_W) // 2
@@ -490,27 +533,37 @@ class NotchWidget(QWidget):
         target_x = (geom.width() - target_w) // 2
         target_rect = QRect(target_x, 0, target_w, target_h)
 
+        self._anim.stop()
+        self._anim_generation += 1
+        current_gen = self._anim_generation
+
         if not animated:
-            self._anim.stop()
             self._on_finished_callback = None
-            self.setFixedHeight(target_h)
-            self.setFixedWidth(target_w)
+            self.setMinimumSize(0, 0)
+            self.setMaximumSize(16777215, 16777215)
             self.setGeometry(target_rect)
+            self.setFixedSize(target_w, target_h)
             self.update()
             if on_finished:
                 on_finished()
             return
 
-        self._anim.stop()
-        self._anim.setStartValue(self.geometry())
+        # Release fixed constraints before starting animation
+        self.setMinimumSize(0, 0)
+        self.setMaximumSize(16777215, 16777215)
+
+        curr = self.geometry()
+        start_rect = QRect(curr.x(), 0, curr.width(), curr.height())
+        self._anim.setStartValue(start_rect)
         self._anim.setEndValue(target_rect)
 
         def _on_done():
-            self.setFixedHeight(target_h)
-            self.setFixedWidth(target_w)
-            self.update()
-            if on_finished:
-                on_finished()
+            if self._anim_generation == current_gen:
+                self.setGeometry(target_rect)
+                self.setFixedSize(target_w, target_h)
+                self.update()
+                if on_finished:
+                    on_finished()
 
         self._on_finished_callback = _on_done
         self._anim.start()
@@ -552,7 +605,9 @@ class NotchWidget(QWidget):
         self._animate_to(target_w, target_h, animated=animated)
         self._outside_monitor_timer.start()
 
-    def collapse_to_hidden(self, animated: bool = True):
+    def collapse_to_hidden(self, animated: bool = True, force: bool = False):
+        if self._is_typing and not force:
+            return
         self._state = self.STATE_HIDDEN
         self._peek_leave_timer.stop()
         self._collapse_timer.stop()
@@ -565,7 +620,14 @@ class NotchWidget(QWidget):
         self._animate_to(self.HIDDEN_W, self.HIDDEN_H, animated=animated)
 
     def auto_collapse_after(self, ms: int = 5000):
+        if self._is_typing:
+            return
         self._collapse_timer.start(ms)
+
+    def _on_collapse_timeout(self):
+        if self._is_typing:
+            return
+        self.collapse_to_hidden()
 
     def _check_outside_click(self, animated: bool = True):
         if self._state != self.STATE_EXPANDED:
@@ -583,7 +645,7 @@ class NotchWidget(QWidget):
         if is_down and not self._mouse_was_down:
             cursor_pos = QCursor.pos()
             if not self.frameGeometry().contains(cursor_pos):
-                self.collapse_to_hidden(animated=animated)
+                self.collapse_to_hidden(animated=animated, force=True)
 
         self._mouse_was_down = is_down
 
@@ -692,14 +754,12 @@ class NotchWidget(QWidget):
 
         if text.startswith("/"):
             self._handle_slash_command(text)
-            self.type_input.clear()
+            self.stop_typing()
             return
 
         self.query_lbl.setText(text)
         self.text_submitted.emit(text, self._current_mode)
-        self.type_input.clear()
-        self.hint_row.show()
-        self.type_input.hide()
+        self.stop_typing()
 
     def _handle_slash_command(self, cmd_text: str):
         parts = cmd_text.split(maxsplit=1)
@@ -764,18 +824,27 @@ class NotchWidget(QWidget):
 
     # --- Events ---
     def eventFilter(self, watched, event):
-        if watched == self.type_input and event.type() == QEvent.Type.KeyPress:
-            if event.key() == Qt.Key.Key_Escape:
-                self.stop_typing()
-                return True
-            elif event.key() == Qt.Key.Key_Tab:
-                self.toggle_mode()
-                return True
+        if self.type_input is not None and watched == self.type_input:
+            if event.type() in (QEvent.Type.FocusIn, QEvent.Type.MouseButtonPress):
+                self._is_typing = True
+                self._collapse_timer.stop()
+                self._peek_leave_timer.stop()
+            elif event.type() == QEvent.Type.KeyPress:
+                self._is_typing = True
+                self._collapse_timer.stop()
+                if event.key() == Qt.Key.Key_Escape:
+                    self.stop_typing()
+                    self.collapse_to_hidden(force=True)
+                    return True
+                elif event.key() == Qt.Key.Key_Tab:
+                    self.toggle_mode()
+                    return True
         return super().eventFilter(watched, event)
 
     def keyPressEvent(self, event: QKeyEvent):
         if event.key() == Qt.Key.Key_Escape:
-            self.collapse_to_hidden()
+            self.stop_typing()
+            self.collapse_to_hidden(force=True)
             event.accept()
         elif event.key() == Qt.Key.Key_Tab:
             self.toggle_mode()

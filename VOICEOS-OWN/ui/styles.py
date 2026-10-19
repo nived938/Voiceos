@@ -243,4 +243,35 @@ QCheckBox::indicator:checked {
 #notchInput:focus {
     border: 1px solid #ffffff;
 }
+
+/* Dedicated Notch Interactive Text Input: fixed 34px height, identical padding across focus */
+#typeInput {
+    background-color: #16161c;
+    border: 1px solid #16161c;
+    border-radius: 17px;
+    padding: 0px 14px;
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 400;
+    selection-background-color: #33333e;
+    selection-color: #ffffff;
+    height: 34px;
+    min-height: 34px;
+    max-height: 34px;
+}
+
+#typeInput:focus {
+    background-color: #16161c;
+    border: 1px solid #2a2a34;
+    border-radius: 17px;
+    padding: 0px 14px;
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 400;
+    selection-background-color: #33333e;
+    selection-color: #ffffff;
+    height: 34px;
+    min-height: 34px;
+    max-height: 34px;
+}
 """

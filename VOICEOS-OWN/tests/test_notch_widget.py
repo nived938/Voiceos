@@ -158,3 +158,90 @@ def test_notch_outside_click_behavior(qapp_session):
 
     notch.close()
 
+
+def test_notch_typing_lockout_and_stability(qapp_session):
+    """
+    Verifies that starting to type locks out auto-collapse and timers,
+    and prevents premature collapse while user is typing.
+    """
+    notch = NotchWidget()
+    notch.transition_to_expanded(animated=False)
+    assert notch._state == NotchWidget.STATE_EXPANDED
+
+    # Start typing
+    notch.start_typing()
+    assert notch._is_typing is True
+    assert notch.input_stack.currentWidget() == notch.type_input
+    assert notch.type_input.isVisible() is True
+
+    # auto_collapse_after should be locked out
+    notch.auto_collapse_after(3000)
+    assert not notch._collapse_timer.isActive()
+
+    # Calling timeout callback manually must NOT collapse while typing
+    notch._on_collapse_timeout()
+    assert notch._state == NotchWidget.STATE_EXPANDED
+    assert notch._is_typing is True
+
+    # collapse_to_hidden without force must NOT collapse while typing
+    notch.collapse_to_hidden(animated=False, force=False)
+    assert notch._state == NotchWidget.STATE_EXPANDED
+
+    # Forced collapse (e.g. explicit close button or Escape) must collapse
+    notch.collapse_to_hidden(animated=False, force=True)
+    assert notch._state == NotchWidget.STATE_HIDDEN
+    assert notch._is_typing is False
+    assert notch.input_stack.currentWidget() == notch.hint_row
+    notch.close()
+
+
+def test_notch_keycap_and_input_dimensions(qapp_session):
+    """
+    Verifies keycap sizing (16px height) and input stability (34px height)
+    with zero geometry shift when focused.
+    """
+    from PySide6.QtWidgets import QLabel
+    notch = NotchWidget()
+    notch.transition_to_expanded(animated=False)
+
+    # Check keycaps in hint row
+    keycaps = [
+        w for w in notch.hint_row.findChildren(QLabel)
+        if w.text() in ("alt", "control")
+    ]
+    assert len(keycaps) == 2
+    for kc in keycaps:
+        assert kc.height() == 16
+        assert "9px" in kc.styleSheet()
+
+    # Check input box height
+    assert notch.type_input.height() == 34
+    initial_geom = notch.type_input.geometry()
+
+    # Simulate focus
+    notch.start_typing()
+    notch.type_input.setFocus()
+    assert notch.type_input.height() == 34
+    notch.close()
+
+
+def test_notch_animation_generation_and_constraint_release(qapp_session):
+    """
+    Verifies that _animate_to increments generation and clears fixed constraints.
+    """
+    notch = NotchWidget()
+    initial_gen = notch._anim_generation
+
+    notch._animate_to(400, 100, animated=False)
+    assert notch._anim_generation == initial_gen + 1
+    assert notch.width() == 400
+    assert notch.height() == 100
+
+    # Interrupted animation test: new animation supersedes previous
+    notch._animate_to(350, 80, animated=True)
+    assert notch._anim_generation == initial_gen + 2
+    assert notch.minimumSize().width() == 0
+    assert notch.minimumSize().height() == 0
+
+    notch.close()
+
